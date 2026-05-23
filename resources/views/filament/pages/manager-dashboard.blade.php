@@ -1,4 +1,4 @@
-
+{{-- VIEW STARTS HERE --}}
 <x-filament-panels::page>
     <style>
         html, body, .fi-layout, .fi-main, .fi-page { background-color: transparent !important; background: transparent !important; }
@@ -400,7 +400,7 @@
                         </div>
 
                         <div class="pos-receipt-footer">
-                           @if($pendingPayment && $pendingPayment->status === 'paid')
+                            @if($pendingPayment && $pendingPayment->status === 'paid')
                                 <div style="background: var(--accent-green-light); border: 1px solid var(--accent-green); padding: 1rem; border-radius: 12px; text-align: center;">
                                     <x-heroicon-s-check-circle style="width: 32px; height: 32px; color: var(--accent-green); margin: 0 auto 0.5rem auto;" />
                                     <div style="color: var(--accent-green); font-weight: 900; font-size: 1.1rem; text-transform: uppercase;">Final Bill Settled</div>
@@ -532,4 +532,37 @@
     </div>
     
     <x-filament-actions::modals />
+
+    {{-- 👇 ADDED: HTML5 Browser Notification Script 👇 --}}
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // 1. Request permission from the browser immediately on page load
+            if ("Notification" in window) {
+                if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+                    Notification.requestPermission();
+                }
+            }
+
+            // 2. Listen to the Livewire event dispatched from the backend
+            window.addEventListener('trigger-browser-notification', function (e) {
+                const data = e.detail;
+
+                // 3. Only show notification if the browser permits it
+                if ("Notification" in window && Notification.permission === "granted") {
+                    const notification = new Notification(data.title, {
+                        body: data.body,
+                        // icon: '/favicon.ico', // Optional: Set a path to your app's icon here
+                        requireInteraction: true // Forces the notification to stay on screen until clicked
+                    });
+
+                    // 4. If the manager clicks the notification, focus the browser tab
+                    notification.onclick = function(event) {
+                        event.preventDefault();
+                        window.focus(); 
+                        notification.close();
+                    };
+                }
+            });
+        });
+    </script>
 </x-filament-panels::page>

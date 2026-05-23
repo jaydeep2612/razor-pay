@@ -42,12 +42,35 @@ class ManagerDashboard extends Page
         $restaurantId = auth()->user()->restaurant_id;
 
         return [
-            "echo-private:restaurant.{$restaurantId},.OrderStatusUpdated" => '$refresh',
+            // 👇 Changed from '$refresh' to a custom handler
+            "echo-private:restaurant.{$restaurantId},.OrderStatusUpdated" => 'handleOrderStatusUpdated',
             "echo-private:restaurant.{$restaurantId}.alerts,.TableStatusUpdated" => '$refresh',
             "echo-private:restaurant.{$restaurantId}.alerts,.WaiterCalled" => '$refresh',
             "echo-private:restaurant.{$restaurantId}.alerts,.BillRequested" => 'notifyBillRequested',
             "echo-private:restaurant.{$restaurantId}.alerts,.PaymentMethodSelected" => 'notifyPaymentMethod',
         ];
+    }
+
+    // 👇 ADDED: Handle the order status update and trigger browser notification
+    public function handleOrderStatusUpdated($event)
+    {
+        // 1. Always refresh the dashboard data to show the new order
+        $this->dispatch('$refresh');
+
+        // 2. Extract order data safely
+        $order = $event['order'] ?? null;
+        $status = $order['status'] ?? null;
+        
+        // Try to get the table number, fallback to ID if number isn't passed in the event
+        $tableNum = $order['table_number'] ?? $order['restaurant_table_id'] ?? 'Unknown';
+
+        // 3. Trigger browser notification ONLY if it is a brand new 'placed' order
+        if ($status === 'placed') {
+            $this->dispatch('trigger-browser-notification', 
+                title: "🛎️ Action Required: New Order",
+                body: "Table {$tableNum} just placed a new order. Please confirm it."
+            );
+        }
     }
 
     public function notifyBillRequested($event)
@@ -64,6 +87,12 @@ class ManagerDashboard extends Page
                 ->warning()
                 ->persistent()
                 ->send();
+
+            // 👇 Optional: Add a browser notification for Bills too!
+            $this->dispatch('trigger-browser-notification', 
+                title: "💰 Bill Requested",
+                body: "Table {$tableNum} ({$customer}) requested their bill."
+            );
 
             Cache::put($cacheKey, true, now()->addSeconds(30));
         }
@@ -182,7 +211,6 @@ class ManagerDashboard extends Page
         </html>
         ";
 
-        // 👇 Inject Native Javascript to open the browser's Print Menu instantly 👇
         $escapedHtml = json_encode($html);
         $this->js("
             const printWindow = window.open('', '_blank', 'width=400,height=600');
@@ -716,13 +744,12 @@ class ManagerDashboard extends Page
             $tablesQuery->whereNull('branch_id');
 
         $tables = $tablesQuery
-            ->with(['qrSessions' => fn($q) => $q->where('is_active', true)]) // Fetch active sessions to calculate totals
+            ->with(['qrSessions' => fn($q) => $q->where('is_active', true)]) 
             ->withCount([
                 'qrSessions as active_sessions_count' => fn($q) => $q->where('is_active', true),
             ])
             ->get()
             ->map(function ($table) {
-                // Calculate live totals only for ACTIVE sessions on this table
                 $activeSessionIds = $table->qrSessions->pluck('id')->toArray();
                 
                 $orders = Order::whereIn('qr_session_id', $activeSessionIds)
@@ -732,7 +759,6 @@ class ManagerDashboard extends Page
                 $subtotal = $orders->sum('total_amount');
                 $amountPaid = $orders->where('payment_status', 'paid')->sum('total_amount');
                 
-                // Attach the calculated metrics back to the table object
                 $table->live_subtotal = $subtotal;
                 $table->live_due = max(0, $subtotal - $amountPaid);
                 $table->live_orders_count = $orders->count();
