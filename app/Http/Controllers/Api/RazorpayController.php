@@ -106,7 +106,11 @@ class RazorpayController extends Controller
 
         } catch (\Exception $e) {
             Log::channel('single')->error('Create Razorpay Order Failed: ' . $e->getMessage()); // Logs to storage/logs/laravel.log
-            return response()->json(['message' => 'Failed to initiate payment.'], 500);
+            //return response()->json(['message' => 'Failed to initiate payment.'], 500);
+            return response()->json([
+                'message' => 'Debug Error: ' . $e->getMessage(),
+                'line' => $e->getLine()
+            ], 500);
         }
     }
 
